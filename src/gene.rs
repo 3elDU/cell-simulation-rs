@@ -1,13 +1,17 @@
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
 use rand::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use crate::config;
 
-#[derive(Debug, FromPrimitive, ToPrimitive, Copy, Clone, PartialEq)]
+#[derive(
+    Default, Debug, FromPrimitive, ToPrimitive, Copy, Clone, PartialEq, Serialize, Deserialize,
+)]
 // Enum for all possible instructions
 pub enum Instruction {
     // No operation. Speaks for itself
+    #[default]
     Noop,
 
     // Bots have four directions they can face: Left, Right, Up, Down
@@ -50,13 +54,8 @@ pub enum Instruction {
     CheckIfFacingRelative,
 
     // Reproduces. A certain minimum amount of energy is required to reproduced, can be configured.
+    // If a child was made successfully, jumps to B1, otherwise to B2
     MakeChild,
-}
-
-impl Default for Instruction {
-    fn default() -> Self {
-        Instruction::Noop
-    }
 }
 
 impl Instruction {
@@ -72,6 +71,7 @@ impl Instruction {
 enum ThingToMutate {
     Instruction,
     Opt,
+    E,
     B1,
     B2,
 }
@@ -83,18 +83,18 @@ impl ThingToMutate {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Gene {
     pub instruction: Instruction,
 
     // Option. Changes how some instructions behave.
     pub opt: bool,
     // Energy. Used in some instructions as amount of energy to check for, to give, etc.
-    pub e: f64,
+    pub e: f32,
     // Branch 1. Instruction pointer, used in conditional instrucions (Check*, Jmp*)
-    pub b1: usize,
+    pub b1: u8,
     // Branch 2. Instruction pointer, used in conditional instructions (Check*, Jmp*)
-    pub b2: usize,
+    pub b2: u8,
 }
 
 impl Gene {
@@ -116,6 +116,9 @@ impl Gene {
         match ThingToMutate::new_random() {
             ThingToMutate::Instruction => self.instruction = Instruction::new_random(),
             ThingToMutate::Opt => self.opt = rng.gen(),
+            ThingToMutate::E => {
+                self.e = rng.gen_range(0.0..config::REPRODUCTION_REQUIRED_ENERGY * 2.0)
+            }
             ThingToMutate::B1 => self.b1 = rng.gen_range(0..config::GENOME_LENGTH),
             ThingToMutate::B2 => self.b2 = rng.gen_range(0..config::GENOME_LENGTH),
         };
