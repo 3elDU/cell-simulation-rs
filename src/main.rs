@@ -1,3 +1,4 @@
+use egui::DragValue;
 use macroquad::prelude::*;
 use mimalloc::MiMalloc;
 
@@ -27,6 +28,11 @@ async fn main() {
         Simulation::new(SIMULATION_WIDTH, SIMULATION_HEIGHT).spawn_thread(),
     ];
     let mut selected = 0;
+    let mut pasted_bot_json = String::new();
+    let mut pasted_bot_x: u16 = 0;
+    let mut pasted_bot_y: u16 = 0;
+    let mut limit_tps = false;
+    let mut tps_limit = 25usize;
 
     loop {
         let handle = &mut handles[selected];
@@ -66,23 +72,85 @@ async fn main() {
                         ui.label(format!("TPS: {}", handle.fps()));
                         ui.label(format!("Iterations: {}", handle.iterations()))
                     });
+
+                    ui.vertical(|ui| {
+                        ui.checkbox(&mut limit_tps, "Limit TPS").changed().then(|| {
+                            handle.set_target_tps(if limit_tps { Some(tps_limit) } else { None });
+                        });
+                        ui.add(egui::Slider::new(&mut tps_limit, 1..=100))
+                            .changed()
+                            .then(|| {
+                                handle.set_target_tps(if limit_tps {
+                                    Some(tps_limit)
+                                } else {
+                                    None
+                                });
+                            });
+                    });
+                });
+
+            if let Some(selected_cell) = handle.selected_cell() {
+                egui::Window::new("Selected cell")
+                    .resizable(false)
+                    .default_open(false)
+                    .show(ctx, |ui| {
+                        ui.label(format!(
+                            "Coordinates: {}, {}",
+                            selected_cell.x(),
+                            selected_cell.y()
+                        ));
+                    });
+            }
+
+            egui::Window::new("Paste from JSON")
+                .resizable(false)
+                .default_open(false)
+                .show(ctx, |ui| {
+                    ui.label("Paste JSON object here");
+                    egui::ScrollArea::vertical()
+                        .max_height(200.0)
+                        .show(ui, |ui| {
+                            ui.text_edit_multiline(&mut pasted_bot_json);
+                        });
+
+                    ui.horizontal(|ui| {
+                        ui.label("X:");
+                        ui.add(DragValue::new(&mut pasted_bot_x).clamp_range(0..=SIMULATION_WIDTH));
+                        ui.label("Y:");
+                        ui.add(
+                            DragValue::new(&mut pasted_bot_y).clamp_range(0..=SIMULATION_HEIGHT),
+                        );
+
+                        ui.button("Paste!").clicked().then(|| {
+                            handle.set_cell(
+                                pasted_bot_x,
+                                pasted_bot_y,
+                                serde_json::from_str(&pasted_bot_json).unwrap(),
+                            );
+                        });
+                    });
                 });
         });
-
-        let map = handle.map();
 
         if is_mouse_button_pressed(MouseButton::Middle) {
             let (cx, cy) = mouse_position();
             let (x, y) = (cx as u16 / CELL_SIZE, cy as u16 / CELL_SIZE);
             println!(
                 "{}",
-                serde_json::to_string_pretty(map.get(x, y).unwrap()).unwrap()
+                serde_json::to_string_pretty(handle.map().get(x, y).unwrap()).unwrap()
             );
+        }
+        if is_mouse_button_pressed(MouseButton::Right) {
+            let (cx, cy) = mouse_position();
+            let (x, y) = (cx as u16 / CELL_SIZE, cy as u16 / CELL_SIZE);
+            pasted_bot_x = x;
+            pasted_bot_y = y;
+            handle.select_cell(x, y);
         }
 
         for x in 0..SIMULATION_WIDTH {
             for y in 0..SIMULATION_HEIGHT {
-                let cell = map.get(x, y).unwrap();
+                let cell = handle.map().get(x, y).unwrap();
 
                 if cell.empty {
                     continue;

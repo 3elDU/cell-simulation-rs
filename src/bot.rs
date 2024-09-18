@@ -161,6 +161,10 @@ impl Bot {
     pub fn coordinates(&self) -> (u16, u16) {
         (self.x, self.y)
     }
+    pub fn set_coordinates(&mut self, x: u16, y: u16) {
+        self.x = x;
+        self.y = y;
+    }
 
     // Whether a bot should update
     pub fn should_update(&self) -> bool {
