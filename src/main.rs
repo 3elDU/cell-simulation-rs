@@ -1,9 +1,12 @@
+pub mod config;
+pub mod simulation;
+
 use egui::DragValue;
 use macroquad::prelude::*;
 use mimalloc::MiMalloc;
 
-use cell_simulation::config::*;
-use cell_simulation::simulation::Simulation;
+use config::*;
+use simulation::Simulation;
 
 // Use MiMalloc as a global allocator
 #[global_allocator]
@@ -29,8 +32,8 @@ async fn main() {
     ];
     let mut selected = 0;
     let mut pasted_bot_json = String::new();
-    let mut pasted_bot_x: u16 = 0;
-    let mut pasted_bot_y: u16 = 0;
+    let mut pasted_bot_x = 0usize;
+    let mut pasted_bot_y = 0usize;
     let mut limit_tps = false;
     let mut tps_limit = 25usize;
 
@@ -134,7 +137,7 @@ async fn main() {
 
         if is_mouse_button_pressed(MouseButton::Middle) {
             let (cx, cy) = mouse_position();
-            let (x, y) = (cx as u16 / CELL_SIZE, cy as u16 / CELL_SIZE);
+            let (x, y) = (cx as usize / CELL_SIZE, cy as usize / CELL_SIZE);
             println!(
                 "{}",
                 serde_json::to_string_pretty(handle.map().get(x, y).unwrap()).unwrap()
@@ -142,7 +145,7 @@ async fn main() {
         }
         if is_mouse_button_pressed(MouseButton::Right) {
             let (cx, cy) = mouse_position();
-            let (x, y) = (cx as u16 / CELL_SIZE, cy as u16 / CELL_SIZE);
+            let (x, y) = (cx as usize / CELL_SIZE, cy as usize / CELL_SIZE);
             pasted_bot_x = x;
             pasted_bot_y = y;
             handle.select_cell(x, y);

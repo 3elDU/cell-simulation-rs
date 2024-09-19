@@ -1,13 +1,10 @@
-use num_derive::{FromPrimitive, ToPrimitive};
-use num_traits::FromPrimitive;
 use rand::prelude::*;
+use rand_derive2::RandGen;
 use serde::{Deserialize, Serialize};
 
 use crate::config;
 
-#[derive(
-    Default, Debug, FromPrimitive, ToPrimitive, Copy, Clone, PartialEq, Serialize, Deserialize,
-)]
+#[derive(Default, Debug, RandGen, Copy, Clone, PartialEq, Serialize, Deserialize)]
 // Enum for all possible instructions
 pub enum Instruction {
     // No operation. Speaks for itself
@@ -58,29 +55,14 @@ pub enum Instruction {
     MakeChild,
 }
 
-impl Instruction {
-    // Generates a random instruction
-    pub fn new_random() -> Self {
-        let idx = thread_rng().gen_range(0..=(Instruction::MakeChild as usize));
-        FromPrimitive::from_usize(idx).unwrap()
-    }
-}
-
-#[derive(FromPrimitive, ToPrimitive)]
 // Used in Gene::mutate() to determine which field to mutate
+#[derive(RandGen)]
 enum ThingToMutate {
     Instruction,
-    Opt,
-    E,
-    B1,
-    B2,
-}
-
-impl ThingToMutate {
-    pub fn new_random() -> Self {
-        let idx = thread_rng().gen_range(0..=(ThingToMutate::B2 as usize));
-        FromPrimitive::from_usize(idx).unwrap()
-    }
+    Option,
+    Energy,
+    Branch,
+    BranchAlt,
 }
 
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
@@ -88,13 +70,13 @@ pub struct Gene {
     pub instruction: Instruction,
 
     // Option. Changes how some instructions behave.
-    pub opt: bool,
+    pub option: bool,
     // Energy. Used in some instructions as amount of energy to check for, to give, etc.
-    pub e: f32,
+    pub energy: f32,
     // Branch 1. Instruction pointer, used in conditional instrucions (Check*, Jmp*)
-    pub b1: u8,
+    pub branch: u8,
     // Branch 2. Instruction pointer, used in conditional instructions (Check*, Jmp*)
-    pub b2: u8,
+    pub branch_alt: u8,
 }
 
 impl Gene {
@@ -102,25 +84,25 @@ impl Gene {
     pub fn new_random() -> Self {
         let mut rng = thread_rng();
         Gene {
-            instruction: Instruction::new_random(),
-            opt: rng.gen(),
-            e: rng.gen_range(0.0..config::REPRODUCTION_REQUIRED_ENERGY * 2.0),
-            b1: rng.gen_range(0..config::GENOME_LENGTH),
-            b2: rng.gen_range(0..config::GENOME_LENGTH),
+            instruction: Instruction::generate_random(),
+            option: rng.gen(),
+            energy: rng.gen_range(0.0..config::REPRODUCTION_REQUIRED_ENERGY * 2.0),
+            branch: rng.gen_range(0..config::GENOME_LENGTH),
+            branch_alt: rng.gen_range(0..config::GENOME_LENGTH),
         }
     }
 
     // Mutate one of gene's fields randomly
     pub fn mutate(&mut self) {
         let mut rng = thread_rng();
-        match ThingToMutate::new_random() {
-            ThingToMutate::Instruction => self.instruction = Instruction::new_random(),
-            ThingToMutate::Opt => self.opt = rng.gen(),
-            ThingToMutate::E => {
-                self.e = rng.gen_range(0.0..config::REPRODUCTION_REQUIRED_ENERGY * 2.0)
+        match ThingToMutate::generate_random() {
+            ThingToMutate::Instruction => self.instruction = Instruction::generate_random(),
+            ThingToMutate::Option => self.option = rng.gen(),
+            ThingToMutate::Energy => {
+                self.energy = rng.gen_range(0.0..config::REPRODUCTION_REQUIRED_ENERGY * 2.0)
             }
-            ThingToMutate::B1 => self.b1 = rng.gen_range(0..config::GENOME_LENGTH),
-            ThingToMutate::B2 => self.b2 = rng.gen_range(0..config::GENOME_LENGTH),
+            ThingToMutate::Branch => self.branch = rng.gen_range(0..config::GENOME_LENGTH),
+            ThingToMutate::BranchAlt => self.branch_alt = rng.gen_range(0..config::GENOME_LENGTH),
         };
     }
 }

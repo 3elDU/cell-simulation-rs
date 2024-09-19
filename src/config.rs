@@ -1,12 +1,12 @@
 // Width and height of the simulation field
-pub const SIMULATION_WIDTH: u16 = 160;
-pub const SIMULATION_HEIGHT: u16 = 90;
+pub const SIMULATION_WIDTH: usize = 160;
+pub const SIMULATION_HEIGHT: usize = 90;
 
 // Cell width and height in pixels
-pub const CELL_SIZE: u16 = 10;
+pub const CELL_SIZE: usize = 8;
 
 // % chance that the child will have 1 gene mutated
-pub const MUTATION_PERCENT: f64 = 25.0;
+pub const MUTATION_PERCENT: f64 = 5.0;
 
 pub const GENOME_LENGTH: u8 = 32;
 
@@ -20,7 +20,7 @@ pub const REPRODUCTION_REQUIRED_ENERGY: f32 = 16.0;
 pub const CELL_MAX_AGE: u32 = 2048;
 
 // Amount of energy the photosynthesis gives
-pub const PHOTOSYNTHESIS_ENERGY: f32 = 1.0;
+pub const PHOTOSYNTHESIS_ENERGY: f32 = 1.25;
 
 // Amount energy given from attacking other cell
 pub const ATTACK_ENERGY: f32 = PHOTOSYNTHESIS_ENERGY * 4.0;

@@ -1,91 +1,22 @@
-use num_derive::FromPrimitive;
-use num_derive::ToPrimitive;
-use num_traits::FromPrimitive;
 use rand::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::color::Color;
+use super::color::Color;
+use super::direction::Direction;
+use super::gene;
+use super::gene::Gene;
+use super::map::Map;
 use crate::config;
-use crate::gene;
-use crate::map::Map;
-
-#[derive(Debug, Copy, Clone, FromPrimitive, ToPrimitive, Serialize, Deserialize)]
-pub enum Direction {
-    Left,
-    Right,
-    Up,
-    Down,
-}
-
-impl Direction {
-    // Generates a random direction
-    fn new_random() -> Self {
-        FromPrimitive::from_u8(thread_rng().gen_range(0..(Direction::Down as u8))).unwrap()
-    }
-
-    // Applies directional movement to given coordinates
-    fn apply_direction(&self, x: u16, y: u16) -> (u16, u16) {
-        match self {
-            Self::Left => {
-                if x == 0 {
-                    (config::SIMULATION_WIDTH - 1, y)
-                } else {
-                    (x - 1, y)
-                }
-            }
-            Self::Right => {
-                if x == config::SIMULATION_WIDTH - 1 {
-                    (0, y)
-                } else {
-                    (x + 1, y)
-                }
-            }
-            Self::Up => {
-                if y == 0 {
-                    (x, config::SIMULATION_HEIGHT - 1)
-                } else {
-                    (x, y - 1)
-                }
-            }
-            Self::Down => {
-                if y == config::SIMULATION_HEIGHT - 1 {
-                    (x, 0)
-                } else {
-                    (x, y + 1)
-                }
-            }
-        }
-    }
-
-    // 'Rotates' direction to the left, returning a new one
-    fn left(&self) -> Self {
-        match self {
-            Self::Down => Direction::Right,
-            Self::Right => Direction::Up,
-            Self::Up => Direction::Left,
-            Self::Left => Direction::Down,
-        }
-    }
-
-    // 'Rotates' direction to the right, returning a new one
-    fn right(&self) -> Self {
-        match self {
-            Self::Left => Direction::Up,
-            Self::Up => Direction::Right,
-            Self::Right => Direction::Down,
-            Self::Down => Direction::Left,
-        }
-    }
-}
+use crate::GENOME_LENGTH;
 
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct Bot {
     pub alive: bool,
     pub empty: bool,
 
-    pub x: u16,
-    pub y: u16,
+    pub x: usize,
+    pub y: usize,
     pub energy: f32,
     pub direction: Direction,
     pub color: Color,
@@ -108,40 +39,14 @@ impl std::fmt::Debug for Bot {
     }
 }
 
-impl Bot {
-    // Generates an alive bot with random color and genome
-    pub fn new_random(x: u16, y: u16) -> Self {
-        let mut genome = [gene::Gene::default(); config::GENOME_LENGTH as usize];
-
-        // Generate the genome
-        for gene in genome.iter_mut() {
-            *gene = gene::Gene::new_random();
-        }
-
-        Bot {
-            alive: true,
-            empty: false,
-
-            x,
-            y,
-            energy: config::START_ENERGY,
-            direction: Direction::new_random(),
-            age: 0,
-
-            color: Color::new(rand::random(), rand::random(), rand::random()),
-            genome,
-            current_instruction: 0,
-        }
-    }
-
-    // Generates an empty bot
-    pub fn new_empty(x: u16, y: u16) -> Self {
+impl Default for Bot {
+    fn default() -> Self {
         Bot {
             alive: false,
             empty: true,
 
-            x,
-            y,
+            x: 0,
+            y: 0,
             energy: 0.0,
             direction: Direction::Left,
             age: 0,
@@ -151,17 +56,51 @@ impl Bot {
             current_instruction: 0,
         }
     }
+}
 
-    pub fn x(&self) -> u16 {
+impl Bot {
+    // Generates an alive bot with random color and genome
+    pub fn new_random(x: usize, y: usize) -> Self {
+        let mut genome = [Gene::default(); config::GENOME_LENGTH as usize];
+        for i in 0..GENOME_LENGTH {
+            genome[i as usize] = Gene::new_random();
+        }
+
+        Bot {
+            alive: true,
+            empty: false,
+
+            x,
+            y,
+            energy: config::START_ENERGY,
+            direction: Direction::generate_random(),
+            age: 0,
+
+            color: random(),
+            genome,
+            current_instruction: 0,
+        }
+    }
+
+    // Generates an empty bot
+    pub fn new_empty(x: usize, y: usize) -> Self {
+        Bot {
+            x,
+            y,
+            ..Default::default()
+        }
+    }
+
+    pub fn x(&self) -> usize {
         self.x
     }
-    pub fn y(&self) -> u16 {
+    pub fn y(&self) -> usize {
         self.y
     }
-    pub fn coordinates(&self) -> (u16, u16) {
+    pub fn coordinates(&self) -> (usize, usize) {
         (self.x, self.y)
     }
-    pub fn set_coordinates(&mut self, x: u16, y: u16) {
+    pub fn set_coordinates(&mut self, x: usize, y: usize) {
         self.x = x;
         self.y = y;
     }
@@ -184,7 +123,7 @@ impl Bot {
     // Update a bot
     // Bot needs a mutable reference to the map to be able to look up other bots and change their fields
     // Example: Attacking other bots (changing their energy), or schecking the bot in front
-    pub fn update(&mut self, map: &mut Map) {
+    pub fn update(&mut self, map: &mut Map<Self>) {
         if !self.alive {
             return;
         }
@@ -217,7 +156,7 @@ impl Bot {
             }
             Instruction::GiveEnergy => {
                 if cell_in_front.alive {
-                    let energy_to_give = self.current_instruction().e.clamp(0.0, self.energy);
+                    let energy_to_give = self.current_instruction().energy.clamp(0.0, self.energy);
                     cell_in_front.energy += energy_to_give;
                     self.energy -= energy_to_give;
                 }
@@ -239,67 +178,67 @@ impl Bot {
             }
 
             Instruction::CheckEnergy => {
-                next_instruction = if self.energy > self.current_instruction().e {
-                    self.current_instruction().b1
+                next_instruction = if self.energy > self.current_instruction().energy {
+                    self.current_instruction().branch
                 } else {
-                    self.current_instruction().b2
+                    self.current_instruction().branch_alt
                 }
             }
 
             Instruction::CheckIfDirectedLeft => {
                 next_instruction = if let Direction::Left = self.direction {
-                    self.current_instruction().b1
+                    self.current_instruction().branch
                 } else {
-                    self.current_instruction().b2
+                    self.current_instruction().branch_alt
                 }
             }
             Instruction::CheckIfDirectedRight => {
                 next_instruction = if let Direction::Right = self.direction {
-                    self.current_instruction().b1
+                    self.current_instruction().branch
                 } else {
-                    self.current_instruction().b2
+                    self.current_instruction().branch_alt
                 }
             }
             Instruction::CheckIfDirectedUp => {
                 next_instruction = if let Direction::Up = self.direction {
-                    self.current_instruction().b1
+                    self.current_instruction().branch
                 } else {
-                    self.current_instruction().b2
+                    self.current_instruction().branch_alt
                 }
             }
             Instruction::CheckIfDirectedDown => {
                 next_instruction = if let Direction::Down = self.direction {
-                    self.current_instruction().b1
+                    self.current_instruction().branch
                 } else {
-                    self.current_instruction().b2
+                    self.current_instruction().branch_alt
                 }
             }
 
             Instruction::CheckIfFacingAliveCell => {
                 next_instruction = if cell_in_front.alive {
-                    self.current_instruction().b1
+                    self.current_instruction().branch
                 } else {
-                    self.current_instruction().b2
+                    self.current_instruction().branch_alt
                 }
             }
             Instruction::CheckIfFacingDeadCell => {
                 next_instruction = if cell_in_front.is_dead() {
-                    self.current_instruction().b1
+                    self.current_instruction().branch
                 } else {
-                    self.current_instruction().b2
+                    self.current_instruction().branch_alt
                 }
             }
             Instruction::CheckIfFacingVoid => {
                 next_instruction = if cell_in_front.empty {
-                    self.current_instruction().b1
+                    self.current_instruction().branch
                 } else {
-                    self.current_instruction().b2
+                    self.current_instruction().branch_alt
                 }
             }
 
             Instruction::CheckIfFacingRelative => 'b: {
                 if !cell_in_front.alive {
-                    next_instruction = self.current_instruction().b2;
+                    next_instruction = self.current_instruction().branch_alt;
                     break 'b;
                 }
 
@@ -313,15 +252,15 @@ impl Bot {
                 }
 
                 next_instruction = if similar_genes == config::GENOME_LENGTH {
-                    self.current_instruction().b1
+                    self.current_instruction().branch
                 } else {
-                    self.current_instruction().b2
+                    self.current_instruction().branch_alt
                 }
             }
 
             Instruction::MakeChild => 'b: {
                 if self.energy < config::REPRODUCTION_REQUIRED_ENERGY && !cell_in_front.empty {
-                    next_instruction = self.current_instruction().b2;
+                    next_instruction = self.current_instruction().branch_alt;
                     break 'b;
                 }
 
@@ -335,15 +274,16 @@ impl Bot {
                 };
 
                 if rand::thread_rng().gen_bool(config::MUTATION_PERCENT / 100.0) {
-                    let gene_to_mutate = rand::thread_rng().gen_range(0..config::GENOME_LENGTH - 1);
-                    child.genome[gene_to_mutate as usize].mutate();
+                    let gene_to_mutate =
+                        rand::thread_rng().gen_range(0..config::GENOME_LENGTH as usize - 1);
+                    child.genome[gene_to_mutate].mutate();
                     // Mutate child's color to be slightly different from the parent
                     child.color.mutate(16.0);
                 }
 
                 map.set(child.x, child.y, child);
                 self.energy -= config::REPRODUCTION_REQUIRED_ENERGY;
-                next_instruction = self.current_instruction().b1;
+                next_instruction = self.current_instruction().branch;
             }
 
             Instruction::Noop => {}
@@ -356,7 +296,7 @@ impl Bot {
         self.current_instruction = next_instruction;
 
         self.energy -= config::NOOP_COST;
-        // Cell can die of age, or if it has <0 energy
+        // Cell can die of age, or if it has less than 0 energy
         if self.age > config::CELL_MAX_AGE || self.energy < 0.0 {
             self.alive = false;
         }

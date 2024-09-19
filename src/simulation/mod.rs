@@ -1,6 +1,12 @@
-use crate::map::Map;
+pub mod bot;
+pub mod color;
+pub mod direction;
+pub mod gene;
+pub mod map;
 
-use super::bot;
+use bot::Bot;
+use map::Map;
+use rand::prelude::*;
 use std::{
     sync::{
         mpsc::{self, Receiver, Sender, TryRecvError},
@@ -11,8 +17,8 @@ use std::{
 };
 
 pub struct Simulation {
-    width: u16,
-    height: u16,
+    width: usize,
+    height: usize,
     iterations: usize,
     paused: bool,
     tps: usize,
@@ -20,11 +26,11 @@ pub struct Simulation {
     /// Keep the number of iterations from previous TPS check to be able to compare
     /// it to the current number of iterations, thus, calculating frames per second.
     prev_iterations: usize,
-    map: Map,
+    map: Map<Bot>,
 
-    selected_bot_coordinates: Option<(u16, u16)>,
+    selected_bot_coordinates: Option<(usize, usize)>,
     // Keep a copy of the bot even if it no longer exists on the map
-    selected_bot: Option<bot::Bot>,
+    selected_bot: Option<Bot>,
 
     /// Keeping the simulation data inside Arc, so we don't have to copy the whole structure
     /// each time we want to send it through channel, only clone the pointer.
@@ -38,8 +44,8 @@ pub struct Simulation {
 impl Simulation {
     /// Create a new simulation with map of given width and height.
     /// Also calls `generate_map()` automatically.
-    pub fn new(width: u16, height: u16) -> Self {
-        Simulation {
+    pub fn new(width: usize, height: usize) -> Self {
+        let mut simulation = Simulation {
             width,
             height,
             paused: true,
@@ -59,6 +65,27 @@ impl Simulation {
                 target_tps: None,
             }),
             target_tps: None,
+        };
+
+        simulation.generate_map();
+        simulation
+    }
+
+    pub fn generate_map(&mut self) {
+        let mut rng = thread_rng();
+        for y in 0..self.height {
+            for x in 0..self.width {
+                // 20% chance to generate an alive bot
+                let cell_is_alive = rng.gen_bool(1.0 / 5.0);
+
+                let bot = if cell_is_alive {
+                    Bot::new_random(x, y)
+                } else {
+                    Bot::new_empty(x, y)
+                };
+
+                self.map.set(x, y, bot);
+            }
         }
     }
 
@@ -92,7 +119,7 @@ impl Simulation {
             if let Ok(()) = map_reset_trigger.try_recv() {
                 self.iterations = 0;
                 self.prev_iterations = 0;
-                self.map.generate_map();
+                self.generate_map();
             }
             if let Ok((x, y, mut bot)) = set_bot_trigger.try_recv() {
                 bot.set_coordinates(x, y);
@@ -164,7 +191,7 @@ impl Simulation {
                     self.map.set(
                         orig_pos.0,
                         orig_pos.1,
-                        bot::Bot::new_empty(orig_pos.0, orig_pos.1),
+                        Bot::new_empty(orig_pos.0, orig_pos.1),
                     );
                 }
 
@@ -189,8 +216,8 @@ struct SimulationData {
     iterations: usize,
     paused: bool,
     fps: usize,
-    map: Map,
-    selected_bot: Option<bot::Bot>,
+    map: Map<Bot>,
+    selected_bot: Option<Bot>,
     target_tps: Option<usize>,
 }
 
@@ -200,21 +227,16 @@ pub struct SimulationThreadHandle {
     rx: Receiver<Arc<SimulationData>>,
     pause_trigger: Sender<()>,
     map_reset_trigger: Sender<()>,
-    set_bot_trigger: Sender<(u16, u16, bot::Bot)>,
-    select_cell_trigger: Sender<Option<(u16, u16)>>,
+    set_bot_trigger: Sender<(usize, usize, Bot)>,
+    select_cell_trigger: Sender<Option<(usize, usize)>>,
     target_tps_trigger: Sender<Option<usize>>,
 }
 
 impl SimulationThreadHandle {
     /// Try to receive new simulation data from the thread
     pub fn try_refresh(&mut self) -> Result<(), TryRecvError> {
-        match self.rx.try_recv() {
-            Ok(data) => {
-                self.data = data;
-                Ok(())
-            }
-            Err(err) => Err(err),
-        }
+        self.data = self.rx.try_recv()?;
+        Ok(())
     }
 
     #[inline(always)]
@@ -236,22 +258,22 @@ impl SimulationThreadHandle {
     }
 
     #[inline(always)]
-    pub fn map(&self) -> &Map {
+    pub fn map(&self) -> &Map<Bot> {
         &self.data.map
     }
     pub fn reset_map(&mut self) {
         self.map_reset_trigger.send(()).unwrap();
     }
 
-    pub fn set_cell(&mut self, x: u16, y: u16, bot: bot::Bot) {
+    pub fn set_cell(&mut self, x: usize, y: usize, bot: Bot) {
         self.set_bot_trigger.send((x, y, bot)).unwrap();
     }
 
-    pub fn select_cell(&mut self, x: u16, y: u16) {
+    pub fn select_cell(&mut self, x: usize, y: usize) {
         self.select_cell_trigger.send(Some((x, y))).unwrap();
     }
     #[inline(always)]
-    pub fn selected_cell(&self) -> Option<bot::Bot> {
+    pub fn selected_cell(&self) -> Option<Bot> {
         self.data.selected_bot
     }
 
