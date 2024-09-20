@@ -9,7 +9,6 @@ edition = "2021"
 egui = "0.21.0"
 egui-macroquad = "0.15.0"
 macroquad = "0.3"
-mimalloc = "0.1.38"
 rand = "0.8.5"
 rand_derive2 = "0.1.21"
 serde = { version = "1.0.188", features = ["derive"] }

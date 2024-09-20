@@ -3,14 +3,9 @@ pub mod simulation;
 
 use egui::DragValue;
 use macroquad::prelude::*;
-use mimalloc::MiMalloc;
 
 use config::*;
 use simulation::Simulation;
-
-// Use MiMalloc as a global allocator
-#[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
 
 fn window_config() -> Conf {
     Conf {
