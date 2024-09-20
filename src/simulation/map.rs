@@ -7,6 +7,16 @@ pub struct Map<T> {
     height: usize,
 }
 
+impl<T> Default for Map<T>
+where
+    T: Default,
+{
+    fn default() -> Self {
+        // Return an empty map
+        Self::new(0, 0)
+    }
+}
+
 impl<T> Map<T>
 where
     T: Default,
