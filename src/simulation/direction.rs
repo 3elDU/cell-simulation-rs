@@ -1,4 +1,5 @@
-use crate::config;
+use crate::Config;
+
 use rand_derive2::RandGen;
 use serde::{Deserialize, Serialize};
 
@@ -12,17 +13,17 @@ pub enum Direction {
 
 impl Direction {
     // Applies directional movement to given coordinates
-    pub fn apply_direction(&self, x: usize, y: usize) -> (usize, usize) {
+    pub fn apply_direction(&self, x: usize, y: usize, config: &Config) -> (usize, usize) {
         match self {
             Self::Left => {
                 if x == 0 {
-                    (config::SIMULATION_WIDTH - 1, y)
+                    (config.width - 1, y)
                 } else {
                     (x - 1, y)
                 }
             }
             Self::Right => {
-                if x == config::SIMULATION_WIDTH - 1 {
+                if x == config.width - 1 {
                     (0, y)
                 } else {
                     (x + 1, y)
@@ -30,14 +31,14 @@ impl Direction {
             }
             Self::Up => {
                 if y == 0 {
-                    (x, config::SIMULATION_HEIGHT - 1)
+                    (x, 0)
                 } else {
                     (x, y - 1)
                 }
             }
             Self::Down => {
-                if y == config::SIMULATION_HEIGHT - 1 {
-                    (x, 0)
+                if y == config.height - 1 {
+                    (x, config.height - 1)
                 } else {
                     (x, y + 1)
                 }

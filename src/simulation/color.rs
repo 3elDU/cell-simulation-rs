@@ -1,3 +1,5 @@
+use std::ops::Mul;
+
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +17,18 @@ impl From<Color> for macroquad::color::Color {
 impl Distribution<Color> for rand::distributions::Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Color {
         Color::new(rng.gen(), rng.gen(), rng.gen())
+    }
+}
+
+impl Mul<f64> for Color {
+    type Output = Color;
+
+    fn mul(self, rhs: f64) -> Self::Output {
+        Color(
+            (self.0 as f64 * rhs) as u8,
+            (self.1 as f64 * rhs) as u8,
+            (self.2 as f64 * rhs) as u8,
+        )
     }
 }
 

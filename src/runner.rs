@@ -7,12 +7,17 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::simulation::{bot::Bot, map::Map, Simulation};
+use crate::{
+    simulation::{bot::Bot, map::Map, Simulation},
+    Config,
+};
 
-pub enum SimulationCommand {
+/// Command from main thread to the simulation thread
+pub enum Cmd {
     TogglePause,
     Reset,
     SelectCell(usize, usize),
+    UpdateConfig(Config),
 }
 
 #[derive(Clone, Default)]
@@ -22,12 +27,13 @@ pub struct SimulationMetadata {
     paused: bool,
     map: Map<Bot>,
     selected_bot: Option<Bot>,
+    config: Config,
 }
 
 /// This structure is a handle to the [`SimulationRunner`].
 /// There is no new method, as the way to get a [`SimulationHandle`] is through [`SimulationRunner::start_new`]
 pub struct SimulationHandle {
-    tx: Sender<SimulationCommand>,
+    tx: Sender<Cmd>,
     rx: Receiver<Arc<SimulationMetadata>>,
 
     metadata: Arc<SimulationMetadata>,
@@ -39,7 +45,7 @@ pub struct SimulationRunner {
     /// The type here is [`SyncSender`], with the capacity of 1, so that we do not send anything,
     /// until the main thread consumes the previous metadata sent
     tx: SyncSender<Arc<SimulationMetadata>>,
-    rx: Receiver<SimulationCommand>,
+    rx: Receiver<Cmd>,
 
     /// Metadata is stored in the variable to not compute it each iteration,
     /// and is revalidated only when sent successfully.
@@ -91,10 +97,18 @@ impl SimulationRunner {
     fn handle_commands(&mut self) {
         if let Ok(command) = self.rx.try_recv() {
             match command {
-                SimulationCommand::TogglePause => self.paused = !self.paused,
-                SimulationCommand::Reset => self.simulation.reset(),
-                SimulationCommand::SelectCell(x, y) => {
+                Cmd::TogglePause => self.paused = !self.paused,
+                Cmd::Reset => {
+                    self.simulation.reset();
+                    self.previous_iterations = 0;
+                    self.tps = 0;
+                    self.previous_tps_check = Instant::now();
+                }
+                Cmd::SelectCell(x, y) => {
                     let _ = self.simulation.select_bot(x, y);
+                }
+                Cmd::UpdateConfig(config) => {
+                    self.simulation.configuration = config;
                 }
             }
         }
@@ -112,6 +126,7 @@ impl SimulationRunner {
             paused: self.paused,
             map: self.simulation.map().clone(),
             selected_bot: self.simulation.selected_bot(),
+            config: self.simulation.configuration,
         });
     }
 
@@ -141,12 +156,12 @@ impl SimulationRunner {
 }
 
 impl SimulationHandle {
-    pub fn reset(&mut self) -> Result<(), SendError<SimulationCommand>> {
-        self.tx.send(SimulationCommand::Reset)
+    pub fn reset(&mut self) -> Result<(), SendError<Cmd>> {
+        self.tx.send(Cmd::Reset)
     }
 
-    pub fn toggle_pause(&mut self) -> Result<(), SendError<SimulationCommand>> {
-        self.tx.send(SimulationCommand::TogglePause)
+    pub fn toggle_pause(&mut self) -> Result<(), SendError<Cmd>> {
+        self.tx.send(Cmd::TogglePause)
     }
     pub fn is_paused(&self) -> bool {
         self.metadata.paused
@@ -162,11 +177,18 @@ impl SimulationHandle {
         &self.metadata.map
     }
 
-    pub fn select_bot(&mut self, x: usize, y: usize) -> Result<(), SendError<SimulationCommand>> {
-        self.tx.send(SimulationCommand::SelectCell(x, y))
+    pub fn select_bot(&mut self, x: usize, y: usize) -> Result<(), SendError<Cmd>> {
+        self.tx.send(Cmd::SelectCell(x, y))
     }
     pub fn selected_bot(&self) -> Option<&Bot> {
         self.metadata.selected_bot.as_ref()
+    }
+
+    pub fn config(&self) -> &Config {
+        &self.metadata.config
+    }
+    pub fn update_config(&mut self, config: Config) -> Result<(), SendError<Cmd>> {
+        self.tx.send(Cmd::UpdateConfig(config))
     }
 
     // Receive metadata update from the thread

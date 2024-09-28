@@ -1,5 +1,6 @@
 pub mod bot;
 pub mod color;
+pub mod config;
 pub mod direction;
 pub mod gene;
 pub mod map;
@@ -7,6 +8,8 @@ pub mod map;
 use bot::Bot;
 use map::Map;
 use rand::prelude::*;
+
+use super::Config;
 
 pub struct Simulation {
     width: usize,
@@ -17,19 +20,24 @@ pub struct Simulation {
     selected_bot_coordinates: Option<(usize, usize)>,
     // Keep a copy of the bot even if it no longer exists on the map
     selected_bot: Option<Bot>,
+
+    pub configuration: Config,
 }
 
 impl Simulation {
     /// Create a new simulation with map of given width and height.
     /// Also calls `generate_map()` automatically.
-    pub fn new(width: usize, height: usize) -> Self {
+    pub fn new(config: Option<Config>) -> Self {
+        let config = config.unwrap_or_default();
+
         let mut simulation = Simulation {
-            width,
-            height,
+            width: config.width,
+            height: config.height,
             iterations: 0,
-            map: Map::new(width, height),
+            map: Map::new(config.width, config.height),
             selected_bot_coordinates: None,
             selected_bot: None,
+            configuration: config,
         };
 
         simulation.generate_map();
@@ -44,7 +52,7 @@ impl Simulation {
                 let cell_is_alive = rng.gen_bool(1.0 / 5.0);
 
                 let bot = if cell_is_alive {
-                    Bot::new_random(x, y)
+                    Bot::new_random(x, y, &self.configuration)
                 } else {
                     Bot::new_empty(x, y)
                 };
@@ -81,7 +89,11 @@ impl Simulation {
                 let mut bot = *self.map.get(x, y).unwrap();
                 let orig_pos = bot.coordinates();
 
-                bot.update(&mut self.map);
+                let mut config = *&self.configuration;
+                config.photosynthesis_energy =
+                    config.photosynthesis_energy * (y as f32 / config.height as f32);
+
+                bot.update(&mut self.map, &config);
 
                 // if bot position was changed, set empty cell at previous position
                 if orig_pos != bot.coordinates() {

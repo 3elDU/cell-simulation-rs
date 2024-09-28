@@ -1,16 +1,14 @@
 use rand::prelude::*;
-use serde::Deserialize;
-use serde::Serialize;
 
 use super::color::Color;
+use super::config;
 use super::direction::Direction;
 use super::gene;
 use super::gene::Gene;
 use super::map::Map;
-use crate::config;
-use crate::GENOME_LENGTH;
+use crate::{Config, GENOME_LENGTH};
 
-#[derive(Copy, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone)]
 pub struct Bot {
     pub alive: bool,
     pub empty: bool,
@@ -22,7 +20,7 @@ pub struct Bot {
     pub color: Color,
     pub age: u32,
 
-    pub genome: [gene::Gene; config::GENOME_LENGTH as usize],
+    pub genome: [Gene; config::GENOME_LENGTH as usize],
     current_instruction: u8,
 }
 
@@ -52,7 +50,7 @@ impl Default for Bot {
             age: 0,
 
             color: Color::BLACK,
-            genome: [gene::Gene::default(); 32],
+            genome: [Gene::default(); config::GENOME_LENGTH as usize],
             current_instruction: 0,
         }
     }
@@ -60,10 +58,10 @@ impl Default for Bot {
 
 impl Bot {
     // Generates an alive bot with random color and genome
-    pub fn new_random(x: usize, y: usize) -> Self {
+    pub fn new_random(x: usize, y: usize, config: &Config) -> Self {
         let mut genome = [Gene::default(); config::GENOME_LENGTH as usize];
         for i in 0..GENOME_LENGTH {
-            genome[i as usize] = Gene::new_random();
+            genome[i as usize] = Gene::new_random(config);
         }
 
         Bot {
@@ -72,7 +70,7 @@ impl Bot {
 
             x,
             y,
-            energy: config::START_ENERGY,
+            energy: config.start_energy,
             direction: Direction::generate_random(),
             age: 0,
 
@@ -111,7 +109,7 @@ impl Bot {
     }
 
     // Returns reference to the current instruction
-    pub fn current_instruction(&self) -> &gene::Gene {
+    pub fn current_instruction(&self) -> &Gene {
         &self.genome[self.current_instruction as usize]
     }
 
@@ -123,13 +121,13 @@ impl Bot {
     // Update a bot
     // Bot needs a mutable reference to the map to be able to look up other bots and change their fields
     // Example: Attacking other bots (changing their energy), or schecking the bot in front
-    pub fn update(&mut self, map: &mut Map<Self>) {
+    pub fn update(&mut self, map: &mut Map<Self>, config: &Config) {
         if !self.alive {
             return;
         }
 
         let mut next_instruction = self.current_instruction + 1;
-        let (looking_x, looking_y) = self.direction.apply_direction(self.x, self.y);
+        let (looking_x, looking_y) = self.direction.apply_direction(self.x, self.y, config);
 
         let cell_in_front = map.get_mut(looking_x, looking_y).unwrap();
 
@@ -137,22 +135,22 @@ impl Bot {
         match self.current_instruction().instruction {
             Instruction::TurnLeft => {
                 self.direction = self.direction.left();
-                self.energy -= config::TURN_COST;
+                self.energy -= config.turn_cost();
             }
             Instruction::TurnRight => {
                 self.direction = self.direction.right();
-                self.energy -= config::TURN_COST;
+                self.energy -= config.turn_cost();
             }
             Instruction::MoveForwards => {
                 if cell_in_front.empty {
                     self.x = looking_x;
                     self.y = looking_y;
-                    self.energy -= config::MOVEMENT_COST;
+                    self.energy -= config.movement_cost;
                 }
             }
 
             Instruction::Photosynthesis => {
-                self.energy += config::PHOTOSYNTHESIS_ENERGY;
+                self.energy += config.photosynthesis_energy;
             }
             Instruction::GiveEnergy => {
                 if cell_in_front.alive {
@@ -162,10 +160,10 @@ impl Bot {
                 }
             }
             Instruction::AttackCell => {
-                if self.energy >= config::ATTACK_REQUIRED_ENERGY && cell_in_front.alive {
-                    self.energy -= config::ATTACK_REQUIRED_ENERGY;
+                if self.energy >= config.attack_required_energy() && cell_in_front.alive {
+                    self.energy -= config.attack_required_energy();
 
-                    let taken_energy = f32::min(cell_in_front.energy, config::ATTACK_ENERGY);
+                    let taken_energy = f32::min(cell_in_front.energy, config.attack_energy);
                     cell_in_front.energy -= taken_energy;
                     self.energy += taken_energy;
                 }
@@ -259,7 +257,7 @@ impl Bot {
             }
 
             Instruction::MakeChild => 'b: {
-                if self.energy < config::REPRODUCTION_REQUIRED_ENERGY && !cell_in_front.empty {
+                if self.energy < config.reproduction_required_energy && !cell_in_front.empty {
                     next_instruction = self.current_instruction().branch_alt;
                     break 'b;
                 }
@@ -268,21 +266,21 @@ impl Bot {
                     x: looking_x,
                     y: looking_y,
                     age: 0,
-                    energy: config::START_ENERGY,
+                    energy: config.start_energy,
                     current_instruction: 0,
                     ..*self
                 };
 
-                if rand::thread_rng().gen_bool(config::MUTATION_PERCENT / 100.0) {
+                if rand::thread_rng().gen_bool(config.mutation_percent / 100.0) {
                     let gene_to_mutate =
                         rand::thread_rng().gen_range(0..config::GENOME_LENGTH as usize - 1);
-                    child.genome[gene_to_mutate].mutate();
+                    child.genome[gene_to_mutate].mutate(config);
                     // Mutate child's color to be slightly different from the parent
                     child.color.mutate(16.0);
                 }
 
                 map.set(child.x, child.y, child);
-                self.energy -= config::REPRODUCTION_REQUIRED_ENERGY;
+                self.energy -= config.reproduction_required_energy;
                 next_instruction = self.current_instruction().branch;
             }
 
@@ -295,9 +293,9 @@ impl Bot {
         }
         self.current_instruction = next_instruction;
 
-        self.energy -= config::NOOP_COST;
+        self.energy -= config.noop_cost;
         // Cell can die of age, or if it has less than 0 energy
-        if self.age > config::CELL_MAX_AGE || self.energy < 0.0 {
+        if self.age > config.cell_max_age || self.energy < 0.0 {
             self.alive = false;
         }
 

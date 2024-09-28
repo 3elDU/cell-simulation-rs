@@ -2,7 +2,9 @@ use rand::prelude::*;
 use rand_derive2::RandGen;
 use serde::{Deserialize, Serialize};
 
-use crate::config;
+use crate::Config;
+
+use super::config;
 
 #[derive(Default, Debug, RandGen, Copy, Clone, PartialEq, Serialize, Deserialize)]
 // Enum for all possible instructions
@@ -81,25 +83,25 @@ pub struct Gene {
 
 impl Gene {
     // Create a new, randomly generated gene
-    pub fn new_random() -> Self {
+    pub fn new_random(config: &Config) -> Self {
         let mut rng = thread_rng();
         Gene {
             instruction: Instruction::generate_random(),
             option: rng.gen(),
-            energy: rng.gen_range(0.0..config::REPRODUCTION_REQUIRED_ENERGY * 2.0),
+            energy: rng.gen_range(0.0..config.reproduction_required_energy * 2.0),
             branch: rng.gen_range(0..config::GENOME_LENGTH),
             branch_alt: rng.gen_range(0..config::GENOME_LENGTH),
         }
     }
 
     // Mutate one of gene's fields randomly
-    pub fn mutate(&mut self) {
+    pub fn mutate(&mut self, config: &Config) {
         let mut rng = thread_rng();
         match ThingToMutate::generate_random() {
             ThingToMutate::Instruction => self.instruction = Instruction::generate_random(),
             ThingToMutate::Option => self.option = rng.gen(),
             ThingToMutate::Energy => {
-                self.energy = rng.gen_range(0.0..config::REPRODUCTION_REQUIRED_ENERGY * 2.0)
+                self.energy = rng.gen_range(0.0..config.reproduction_required_energy * 2.0)
             }
             ThingToMutate::Branch => self.branch = rng.gen_range(0..config::GENOME_LENGTH),
             ThingToMutate::BranchAlt => self.branch_alt = rng.gen_range(0..config::GENOME_LENGTH),

@@ -1,18 +1,23 @@
-pub mod config;
+pub mod renderer;
 pub mod runner;
 pub mod simulation;
 
+use egui::DragValue;
+use egui::Slider;
 use macroquad::prelude::*;
 
-use config::*;
+use renderer::RenderingMode;
 use runner::SimulationRunner;
+use simulation::config::*;
 use simulation::Simulation;
 
 fn window_config() -> Conf {
+    let default_config = Config::default();
+
     Conf {
         window_title: "Cell simulation".to_string(),
-        window_width: (SIMULATION_WIDTH * CELL_SIZE) as i32,
-        window_height: (SIMULATION_HEIGHT * CELL_SIZE) as i32,
+        window_width: (default_config.width * default_config.cell_size) as i32,
+        window_height: (default_config.height * default_config.cell_size) as i32,
         ..Default::default()
     }
 }
@@ -20,8 +25,8 @@ fn window_config() -> Conf {
 #[macroquad::main(window_config)]
 async fn main() {
     // Start 4 simulations, each in it's own thread
-    let mut simulation =
-        SimulationRunner::start_new(Simulation::new(SIMULATION_WIDTH, SIMULATION_HEIGHT));
+    let mut simulation = SimulationRunner::start_new(Simulation::new(None));
+    let mut rendering_mode = RenderingMode::Normal;
 
     loop {
         simulation.update();
@@ -49,10 +54,73 @@ async fn main() {
                         ui.label(format!("Iterations: {}", simulation.iterations()))
                     });
                 });
+
+            egui::Window::new("Settings")
+                .resizable(false)
+                .show(ctx, |ui| {
+                    let mut config = *simulation.config();
+
+                    ui.horizontal(|ui| {
+                        ui.label("Mutation percent");
+                        ui.add(Slider::new(&mut config.mutation_percent, 0.0..=100.0));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Start energy");
+                        ui.add(
+                            DragValue::new(&mut config.start_energy)
+                                .clamp_range(0.0..=f32::INFINITY)
+                                .speed(0.1),
+                        );
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Required energy for reproduction");
+                        ui.add(DragValue::new(&mut config.reproduction_required_energy));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Max age");
+                        ui.add(DragValue::new(&mut config.cell_max_age));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Photosynthesis energy");
+                        ui.add(DragValue::new(&mut config.photosynthesis_energy).speed(0.01));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Attack energy");
+                        ui.add(DragValue::new(&mut config.attack_energy).speed(0.05));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Movement cost");
+                        ui.add(DragValue::new(&mut config.movement_cost).speed(0.01));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Noop cost");
+                        ui.add(DragValue::new(&mut config.noop_cost));
+                    });
+
+                    if config != *simulation.config() {
+                        simulation
+                            .update_config(config)
+                            .expect("Failed to update the simulation configuration");
+                    }
+                });
+
+            egui::Window::new("Rendering mode")
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.radio_value(&mut rendering_mode, RenderingMode::Normal, "Normal");
+                    ui.radio_value(&mut rendering_mode, RenderingMode::Energy, "Energy");
+                    ui.radio_value(&mut rendering_mode, RenderingMode::Lifetime, "Lifetime");
+                });
         });
 
-        for x in 0..SIMULATION_WIDTH {
-            for y in 0..SIMULATION_HEIGHT {
+        let config = simulation.config();
+        for x in 0..config.width {
+            for y in 0..config.height {
                 let cell = simulation.map().get(x, y).unwrap();
 
                 if cell.empty {
@@ -60,16 +128,16 @@ async fn main() {
                 }
 
                 let color = if cell.alive {
-                    cell.color.into()
+                    rendering_mode.render(cell, config).into()
                 } else {
                     Color::from_rgba(100, 100, 100, 255)
                 };
 
                 draw_rectangle(
-                    (x * CELL_SIZE) as f32,
-                    (y * CELL_SIZE) as f32,
-                    CELL_SIZE as f32,
-                    CELL_SIZE as f32,
+                    (x * config.cell_size) as f32,
+                    (y * config.cell_size) as f32,
+                    config.cell_size as f32,
+                    config.cell_size as f32,
                     color,
                 );
             }
